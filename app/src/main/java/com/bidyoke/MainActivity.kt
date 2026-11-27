@@ -39,6 +39,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.io.File
 
 private val Ink = Color(0xFF100E16)
 private val Panel = Color(0xFF1D1927)
@@ -53,6 +54,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installBundledDemoSongs()
         setContent {
             BidyokeTheme {
                 BidyokeApp(onRemoteKeyHandler = { remoteKeyHandler = it })
@@ -79,16 +81,29 @@ private fun BidyokeTheme(content: @Composable () -> Unit) {
     )
 }
 
+
+private fun MainActivity.installBundledDemoSongs() {
+    val assetNames = assets.list("demo_songs") ?: return
+    val targetDir = File(filesDir, "demo_songs").apply { mkdirs() }
+    assetNames.filter { it.endsWith(".kar", ignoreCase = true) }.forEach { name ->
+        val target = File(targetDir, name)
+        if (!target.exists()) {
+            assets.open("demo_songs/$name").use { input ->
+                target.outputStream().use { output -> input.copyTo(output) }
+            }
+        }
+    }
+}
+
 private enum class Destination(val label: String) {
     HOME("Home"), LIBRARY("Songbook"), PLAYER("Karaoke"), SETTINGS("Settings")
 }
-private data class Song(val number: String, val title: String, val artist: String)
+private data class Song(val number: String, val title: String, val artist: String, val fileName: String? = null)
 private val sampleSongs = listOf(
-    Song("00125", "Nothing's Gonna Change My Love for You", "George Benson"),
-    Song("00126", "Through the Years", "Kenny Rogers"),
-    Song("00127", "Bakit Ngayon Ka Lang", "Ogie Alcasid"),
-    Song("00128", "Wonderful Tonight", "Eric Clapton"),
-    Song("00129", "Torete", "Moonstar88")
+    Song("00125", "Midnight Drive", "Bidyoke Demo Studio", "00125_midnight_drive.kar"),
+    Song("00126", "Bituing Gabay", "Bidyoke Demo Studio", "00126_bituing_gabay.kar"),
+    Song("00127", "Summer Lights", "Bidyoke Demo Studio", "00127_summer_lights.kar"),
+    Song("00128", "Awit ng Umaga", "Bidyoke Demo Studio", "00128_awit_ng_umaga.kar")
 )
 
 @Composable
@@ -330,7 +345,7 @@ private fun LibraryScreen(onAdd: (Song) -> Unit) {
     }
     Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("SONGBOOK", color = Violet, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-        Text("Browse by song number, title, or artist. These are sample entries for now.", color = Muted)
+        Text("Four original offline KAR demos are bundled with Bidyoke for testing. Their MIDI notes and synchronized lyric events are included in each file.", color = Muted)
         OutlinedTextField(
             value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(),
             label = { Text("Search song number, title, or artist") }, singleLine = true
@@ -385,6 +400,12 @@ private fun SettingsScreen(folderUri: String?, onChooseFolder: () -> Unit, onCle
                     Spacer(Modifier.width(6.dp))
                     Text("Clear selected folder")
                 }
+            }
+        }
+        SectionCard("BUILT-IN TEST SONGS") {
+            Text("4 original KAR demo files are included and copied into Bidyoke's private storage for offline testing.", color = Muted)
+            sampleSongs.forEach { song ->
+                Text("${song.number}  •  ${song.title}", color = Color.White, fontWeight = FontWeight.SemiBold)
             }
         }
         SectionCard("AUDIO & DISPLAY") {
