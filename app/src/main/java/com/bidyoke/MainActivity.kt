@@ -32,6 +32,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.nativeKeyEvent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -83,81 +85,154 @@ private val sampleSongs = listOf(
 @Composable
 private fun BidyokeApp() {
     val context = LocalContext.current
-    var destination by remember { mutableStateOf(Destination.HOME) }
+    var overlay by remember { mutableStateOf<Destination?>(null) }
     var songNumber by remember { mutableStateOf("") }
     var queue by remember { mutableStateOf(listOf(sampleSongs[1], sampleSongs[3])) }
     var songFolder by remember {
-        mutableStateOf(
-            context.getSharedPreferences(PREFS_NAME, 0).getString(PREF_SONG_FOLDER, null)
-        )
+        mutableStateOf(context.getSharedPreferences(PREFS_NAME, 0).getString(PREF_SONG_FOLDER, null))
     }
     val folderPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? ->
         if (uri != null) {
             try {
-                context.contentResolver.takePersistableUriPermission(
-                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 songFolder = uri.toString()
-                context.getSharedPreferences(PREFS_NAME, 0).edit()
-                    .putString(PREF_SONG_FOLDER, uri.toString()).apply()
-            } catch (_: SecurityException) {
-                songFolder = null
-            }
+                context.getSharedPreferences(PREFS_NAME, 0).edit().putString(PREF_SONG_FOLDER, uri.toString()).apply()
+            } catch (_: SecurityException) { songFolder = null }
         }
     }
-    val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 700
-
-    Column(Modifier.fillMaxSize().background(Ink)) {
-        Row(Modifier.weight(1f).fillMaxWidth()) {
-            if (wide) {
-                NavigationRail(containerColor = Panel, contentColor = Violet) {
-                    Spacer(Modifier.height(18.dp))
-                    Text("B", Modifier.align(Alignment.CenterHorizontally), color = Violet, fontSize = 28.sp, fontWeight = FontWeight.Black)
-                    Spacer(Modifier.height(20.dp))
-                    Destination.entries.forEach { item ->
-                        NavigationRailItem(destination == item, { destination = item }, icon = { DestinationIcon(item) }, label = { Text(item.label) })
-                    }
+    val matchedSong = sampleSongs.firstOrNull { it.number == songNumber }
+    val keyHandler: (android.view.KeyEvent) -> Boolean = { event ->
+        if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+            when (event.keyCode) {
+                in android.view.KeyEvent.KEYCODE_0..android.view.KeyEvent.KEYCODE_9 -> {
+                    val digit = (event.keyCode - android.view.KeyEvent.KEYCODE_0).toString()
+                    if (songNumber.length < 5) songNumber += digit
+                    true
                 }
+                android.view.KeyEvent.KEYCODE_DEL -> { songNumber = songNumber.dropLast(1); true }
+                android.view.KeyEvent.KEYCODE_ENTER, android.view.KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                    if (matchedSong != null) { queue = queue + matchedSong; songNumber = "" }
+                    true
+                }
+                android.view.KeyEvent.KEYCODE_MENU, android.view.KeyEvent.KEYCODE_SETTINGS -> {
+                    overlay = if (overlay == null) Destination.LIBRARY else null
+                    true
+                }
+                android.view.KeyEvent.KEYCODE_BACK, android.view.KeyEvent.KEYCODE_ESCAPE -> {
+                    if (overlay != null) { overlay = null; true } else false
+                }
+                else -> false
             }
-            Column(Modifier.weight(1f).fillMaxHeight()) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("BIDYOKE", color = Violet, fontWeight = FontWeight.Black, letterSpacing = 3.sp, fontSize = 20.sp)
-                        Text("Your Stage. Your Songs.", color = Muted, fontSize = 12.sp)
-                    }
-                    Surface(color = Raised, shape = CircleShape) {
-                        Text("● READY", Modifier.padding(horizontal = 14.dp, vertical = 8.dp), color = Color(0xFF8EE0B0), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
+        } else false
+    }
+
+    Box(
+        Modifier.fillMaxSize().background(Color.Black)
+            .onPreviewKeyEvent { keyHandler(it.nativeKeyEvent) }
+    ) {
+        // Traditional karaoke standby screen: video area is the whole experience.
+        Box(
+            Modifier.fillMaxSize().clickable { if (overlay == null) overlay = Destination.LIBRARY },
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("BIDYOKE", color = Violet.copy(alpha = .75f), fontSize = 15.sp, fontWeight = FontWeight.Bold, letterSpacing = 5.sp)
+                Text(
+                    songNumber.padEnd(5, '0').ifEmpty { "00000" },
+                    color = Color.White,
+                    fontSize = 76.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 12.sp
+                )
+                Text(
+                    if (songNumber.isEmpty()) "ENTER SONG NUMBER" else matchedSong?.title ?: "ENTER SONG NUMBER",
+                    color = if (matchedSong != null) Violet else Muted,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 2.sp
+                )
+                if (matchedSong != null) Text("Press ENTER to add to queue", color = Muted, fontSize = 12.sp)
+            }
+            Row(
+                Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(22.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("READY", color = Color(0xFF8EE0B0), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("${queue.size} SONGS IN QUEUE", color = Muted, fontSize = 11.sp)
                 }
-                when (destination) {
-                    Destination.HOME -> HomeScreen(songNumber, { songNumber = it }, queue, { queue = queue + it }, { destination = Destination.PLAYER })
-                    Destination.LIBRARY -> LibraryScreen { song -> queue = queue + song }
-                    Destination.PLAYER -> KaraokeScreen()
-                    Destination.SETTINGS -> SettingsScreen(
-                        folderUri = songFolder,
-                        onChooseFolder = { folderPicker.launch(null) },
-                        onClearFolder = {
-                            songFolder?.let { saved ->
-                                try {
-                                    context.contentResolver.releasePersistableUriPermission(
-                                        Uri.parse(saved), Intent.FLAG_GRANT_READ_URI_PERMISSION
-                                    )
-                                } catch (_: SecurityException) { }
-                            }
-                            songFolder = null
-                            context.getSharedPreferences(PREFS_NAME, 0).edit()
-                                .remove(PREF_SONG_FOLDER).apply()
-                        }
-                    )
+                FilledTonalButton(onClick = { overlay = Destination.LIBRARY }) {
+                    Icon(Icons.Default.Settings, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("MENU")
                 }
             }
         }
-        if (!wide) {
-            NavigationBar(containerColor = Panel) {
-                Destination.entries.forEach { item ->
-                    NavigationBarItem(destination == item, { destination = item }, icon = { DestinationIcon(item) }, label = { Text(item.label) })
+
+        if (overlay != null) {
+            Row(Modifier.fillMaxSize().background(Ink.copy(alpha = .97f))) {
+                Column(Modifier.fillMaxWidth().padding(18.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("BIDYOKE MENU", color = Violet, fontWeight = FontWeight.Black, letterSpacing = 2.sp, fontSize = 20.sp)
+                            Text("Select an option", color = Muted, fontSize = 12.sp)
+                        }
+                        TextButton(onClick = { overlay = null }) { Text("CLOSE  ✕") }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Destination.entries.forEach { item ->
+                            FilterChip(
+                                selected = overlay == item,
+                                onClick = { overlay = item },
+                                label = { Text(item.label) },
+                                leadingIcon = { DestinationIcon(item) }
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    when (overlay) {
+                        Destination.HOME -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("ENTER SONG NUMBER", color = Violet, fontWeight = FontWeight.Bold)
+                            Text(songNumber.padEnd(5, '0').ifEmpty { "00000" }, color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Bold, letterSpacing = 8.sp)
+                            listOf("1","2","3","4","5","6","7","8","9","⌫","0","CLEAR").chunked(3).forEach { keys ->
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    keys.forEach { key ->
+                                        KeyButton(key, Modifier.weight(1f)) {
+                                            when (key) {
+                                                "⌫" -> songNumber = songNumber.dropLast(1)
+                                                "CLEAR" -> songNumber = ""
+                                                else -> if (songNumber.length < 5) songNumber += key
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Button(onClick = { matchedSong?.let { queue = queue + it; songNumber = "" } }, enabled = matchedSong != null, modifier = Modifier.fillMaxWidth()) {
+                                Text("ADD TO QUEUE")
+                            }
+                        }
+                        Destination.LIBRARY -> LibraryScreen { song -> queue = queue + song }
+                        Destination.PLAYER -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("NOW PLAYING", color = Violet, fontWeight = FontWeight.Bold)
+                            Text("Playback controls and synchronized lyrics will appear here when the playback engine is connected.", color = Muted)
+                            Text("Queue: ${queue.size} songs", color = Color.White)
+                        }
+                        Destination.SETTINGS -> SettingsScreen(
+                            folderUri = songFolder,
+                            onChooseFolder = { folderPicker.launch(null) },
+                            onClearFolder = {
+                                songFolder?.let { saved ->
+                                    try { context.contentResolver.releasePersistableUriPermission(Uri.parse(saved), Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                                    catch (_: SecurityException) { }
+                                }
+                                songFolder = null
+                                context.getSharedPreferences(PREFS_NAME, 0).edit().remove(PREF_SONG_FOLDER).apply()
+                            }
+                        )
+                        null -> Unit
+                    }
                 }
             }
         }
