@@ -1,8 +1,12 @@
 package com.bidyoke
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,12 +25,15 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -38,6 +45,8 @@ private val Panel = Color(0xFF1D1927)
 private val Raised = Color(0xFF292336)
 private val Violet = Color(0xFFB99AFF)
 private val Muted = Color(0xFFAAA1B8)
+private const val PREFS_NAME = "bidyoke_preferences"
+private const val PREF_SONG_FOLDER = "song_folder_uri"
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,9 +82,31 @@ private val sampleSongs = listOf(
 
 @Composable
 private fun BidyokeApp() {
+    val context = LocalContext.current
     var destination by remember { mutableStateOf(Destination.HOME) }
     var songNumber by remember { mutableStateOf("") }
     var queue by remember { mutableStateOf(listOf(sampleSongs[1], sampleSongs[3])) }
+    var songFolder by remember {
+        mutableStateOf(
+            context.getSharedPreferences(PREFS_NAME, 0).getString(PREF_SONG_FOLDER, null)
+        )
+    }
+    val folderPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+                songFolder = uri.toString()
+                context.getSharedPreferences(PREFS_NAME, 0).edit()
+                    .putString(PREF_SONG_FOLDER, uri.toString()).apply()
+            } catch (_: SecurityException) {
+                songFolder = null
+            }
+        }
+    }
     val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 700
 
     Column(Modifier.fillMaxSize().background(Ink)) {
@@ -104,7 +135,22 @@ private fun BidyokeApp() {
                     Destination.HOME -> HomeScreen(songNumber, { songNumber = it }, queue, { queue = queue + it }, { destination = Destination.PLAYER })
                     Destination.LIBRARY -> LibraryScreen { song -> queue = queue + song }
                     Destination.PLAYER -> KaraokeScreen()
-                    Destination.SETTINGS -> SettingsScreen()
+                    Destination.SETTINGS -> SettingsScreen(
+                        folderUri = songFolder,
+                        onChooseFolder = { folderPicker.launch(null) },
+                        onClearFolder = {
+                            songFolder?.let { saved ->
+                                try {
+                                    context.contentResolver.releasePersistableUriPermission(
+                                        Uri.parse(saved), Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                    )
+                                } catch (_: SecurityException) { }
+                            }
+                            songFolder = null
+                            context.getSharedPreferences(PREFS_NAME, 0).edit()
+                                .remove(PREF_SONG_FOLDER).apply()
+                        }
+                    )
                 }
             }
         }
@@ -172,7 +218,16 @@ private fun HomeScreen(number: String, onNumberChange: (String) -> Unit, queue: 
         }
         SectionCard("IN QUEUE • ${queue.size} SONGS", Modifier.weight(1f).fillMaxHeight()) {
             if (queue.isEmpty()) Text("No song requests yet. Enter a song number to get started.", color = Muted)
-            else LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) { items(queue) { song -> SongRow(song) {} } }
+            else LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(queue) { song ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) { SongRow(song) {} }
+                        IconButton(onClick = { /* queue editing is intentionally host-only in a later milestone */ }) {
+                            Icon(Icons.Default.QueueMusic, "Queued song", tint = Violet)
+                        }
+                    }
+                }
+            }
             Spacer(Modifier.weight(1f))
             Button(onClick = onOpenPlayer, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Default.PlayArrow, null)
@@ -185,10 +240,23 @@ private fun HomeScreen(number: String, onNumberChange: (String) -> Unit, queue: 
 
 @Composable
 private fun LibraryScreen(onAdd: (Song) -> Unit) {
+    var query by remember { mutableStateOf("") }
+    val filtered = sampleSongs.filter {
+        it.number.contains(query.trim(), ignoreCase = true) ||
+            it.title.contains(query.trim(), ignoreCase = true) ||
+            it.artist.contains(query.trim(), ignoreCase = true)
+    }
     Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("SONGBOOK", color = Violet, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         Text("Browse by song number, title, or artist. These are sample entries for now.", color = Muted)
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) { items(sampleSongs) { song -> SongRow(song) { onAdd(song) } } }
+        OutlinedTextField(
+            value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(),
+            label = { Text("Search song number, title, or artist") }, singleLine = true
+        )
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(filtered) { song -> SongRow(song) { onAdd(song) } }
+        }
+        if (filtered.isEmpty()) Text("No matching songs.", color = Muted)
     }
 }
 
@@ -200,30 +268,45 @@ private fun KaraokeScreen() {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.PlayArrow, null, tint = Violet, modifier = Modifier.size(54.dp))
                     Text("KARAOKE VIDEO", color = Violet, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                    Text("Your song video will appear here", color = Muted)
+                    Text("Video playback will be connected in a later phase.", color = Muted)
                 }
             }
         }
         Surface(color = Panel, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("LYRICS PREVIEW", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp)
                 Text("I found a love for me", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                 Text("Darling, just dive right in", color = Violet, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold)
-                Text("SYNCHRONIZED LYRICS PREVIEW", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp)
             }
         }
     }
 }
 
 @Composable
-private fun SettingsScreen() {
+private fun SettingsScreen(folderUri: String?, onChooseFolder: () -> Unit, onClearFolder: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("SETTINGS", color = Violet, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         SectionCard("SONG LIBRARY") {
-            Text("Choose a folder where your karaoke files are stored.", color = Muted)
-            Text("Folder selection and persistent access will be wired in the next setup step.", color = Muted, fontSize = 12.sp)
+            Text("Select the folder containing your karaoke media. Bidyoke keeps read access after restarting the app.", color = Muted)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Default.FolderOpen, null, tint = Violet)
+                Text(if (folderUri == null) "No folder selected" else Uri.parse(folderUri).lastPathSegment ?: "Folder selected", color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            }
+            Button(onClick = onChooseFolder, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.FolderOpen, null)
+                Spacer(Modifier.width(8.dp))
+                Text(if (folderUri == null) "CHOOSE SONG FOLDER" else "CHANGE SONG FOLDER")
+            }
+            if (folderUri != null) {
+                TextButton(onClick = onClearFolder) {
+                    Icon(Icons.Default.Delete, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Clear selected folder")
+                }
+            }
         }
         SectionCard("AUDIO & DISPLAY") {
-            Text("Microphone, speaker output, lyrics appearance, and TV display settings will be configured in later phases.", color = Muted)
+            Text("Microphone mixing, speaker output, lyrics appearance, and TV display controls are planned for later phases.", color = Muted)
         }
     }
 }
