@@ -33,7 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.nativeKeyEvent
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -103,9 +103,9 @@ private fun BidyokeApp() {
         }
     }
     val matchedSong = sampleSongs.firstOrNull { it.number == songNumber }
-    val keyHandler: (android.view.KeyEvent) -> Boolean = { event ->
-        if (event.action == android.view.KeyEvent.ACTION_DOWN) {
-            when (event.keyCode) {
+    val keyHandler: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = { event ->
+        if (event.type == KeyEventType.KeyDown) {
+            when (event.key.keyCode.toInt()) {
                 in android.view.KeyEvent.KEYCODE_0..android.view.KeyEvent.KEYCODE_9 -> {
                     val digit = (event.keyCode - android.view.KeyEvent.KEYCODE_0).toString()
                     if (songNumber.length < 5) songNumber += digit
@@ -130,7 +130,7 @@ private fun BidyokeApp() {
 
     Box(
         Modifier.fillMaxSize().background(Color.Black)
-            .onPreviewKeyEvent { keyHandler(it.nativeKeyEvent) }
+            .onPreviewKeyEvent { keyHandler(it) }
     ) {
         // Traditional karaoke standby screen: video area is the whole experience.
         Box(
