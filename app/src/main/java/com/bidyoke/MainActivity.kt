@@ -257,8 +257,23 @@ private fun BidyokeApp(onRemoteKeyHandler: ((android.view.KeyEvent) -> Boolean) 
                         Destination.LIBRARY -> LibraryScreen { song -> queue = queue + song }
                         Destination.PLAYER -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("NOW PLAYING", color = Violet, fontWeight = FontWeight.Bold)
-                            Text("Playback controls and synchronized lyrics will appear here when the playback engine is connected.", color = Muted)
-                            Text("Queue: ${queue.size} songs", color = Color.White)
+                            Text(currentSong?.title ?: "Nothing is playing", color = Color.White)
+                            Text(currentLyric.ifBlank { "Timed lyrics appear on the main screen during playback." }, color = Muted)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = {
+                                        val next = queue.firstOrNull()
+                                        if (next != null) {
+                                            queue = queue.drop(1)
+                                            startSong(next)
+                                        }
+                                    },
+                                    enabled = queue.isNotEmpty()
+                                ) { Text("PLAY NEXT") }
+                                OutlinedButton(onClick = { midiPlayer.stop() }, enabled = isPlaying) { Text("STOP") }
+                            }
+                            Text("QUEUE • ${queue.size} SONGS", color = Color.White)
+                            LazyColumn { items(queue) { song -> SongRow(song) { } } }
                         }
                         Destination.SETTINGS -> SettingsScreen(
                             folderUri = songFolder,
