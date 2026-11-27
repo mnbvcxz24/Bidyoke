@@ -111,7 +111,16 @@ private fun BidyokeApp(onRemoteKeyHandler: ((android.view.KeyEvent) -> Boolean) 
     val context = LocalContext.current
     var overlay by remember { mutableStateOf<Destination?>(null) }
     var songNumber by remember { mutableStateOf("") }
-    var queue by remember { mutableStateOf(listOf(sampleSongs[1], sampleSongs[3])) }
+    var queue by remember { mutableStateOf(emptyList<Song>()) }
+    var currentSong by remember { mutableStateOf<Song?>(null) }
+    var currentLyric by remember { mutableStateOf("") }
+    var isPlaying by remember { mutableStateOf(false) }
+    val midiPlayer = remember { MidiKaraokePlayer(context) { playing, lyric -> isPlaying = playing; currentLyric = lyric; if (!playing) currentSong = null } }
+    DisposableEffect(midiPlayer) { onDispose { midiPlayer.release() } }
+    fun startSong(song: Song) {
+        val file = song.fileName?.let { File(context.filesDir, "demo_songs/$it") }
+        if (file != null && file.exists()) { currentSong = song; currentLyric = ""; isPlaying = true; midiPlayer.play(file) }
+    }
     var songFolder by remember {
         mutableStateOf(context.getSharedPreferences(PREFS_NAME, 0).getString(PREF_SONG_FOLDER, null))
     }
@@ -137,7 +146,7 @@ private fun BidyokeApp(onRemoteKeyHandler: ((android.view.KeyEvent) -> Boolean) 
                 }
                 android.view.KeyEvent.KEYCODE_DEL -> { songNumber = songNumber.dropLast(1); true }
                 android.view.KeyEvent.KEYCODE_ENTER, android.view.KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                    if (matchedSong != null) { queue = queue + matchedSong; songNumber = "" }
+                    if (matchedSong != null) { if (currentSong == null) startSong(matchedSong) else queue = queue + matchedSong; songNumber = "" }
                     true
                 }
                 android.view.KeyEvent.KEYCODE_MENU, android.view.KeyEvent.KEYCODE_SETTINGS -> {
@@ -159,6 +168,15 @@ private fun BidyokeApp(onRemoteKeyHandler: ((android.view.KeyEvent) -> Boolean) 
             Modifier.fillMaxSize().clickable { if (overlay == null) overlay = Destination.LIBRARY },
             contentAlignment = Alignment.Center
         ) {
+            if (currentSong != null && isPlaying) {
+                Column(Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    Text("NOW PLAYING", color = Violet, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
+                    Text(currentSong?.title.orEmpty(), color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(22.dp))
+                    Text(currentLyric.ifBlank { "♪  ♪  ♪" }, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    Text("BIDYOKE • MIDI KARAOKE", color = Muted, fontSize = 11.sp)
+                }
+            } else {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("BIDYOKE", color = Violet.copy(alpha = .75f), fontSize = 15.sp, fontWeight = FontWeight.Bold, letterSpacing = 5.sp)
                 Text(
@@ -175,7 +193,8 @@ private fun BidyokeApp(onRemoteKeyHandler: ((android.view.KeyEvent) -> Boolean) 
                     fontWeight = FontWeight.SemiBold,
                     letterSpacing = 2.sp
                 )
-                if (matchedSong != null) Text("Press ENTER to add to queue", color = Muted, fontSize = 12.sp)
+                if (matchedSong != null) Text("Press ENTER to play", color = Muted, fontSize = 12.sp)
+            }
             }
             Row(
                 Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(22.dp),
