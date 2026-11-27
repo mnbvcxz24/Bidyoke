@@ -140,7 +140,7 @@ private fun BidyokeApp() {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("BIDYOKE", color = Violet.copy(alpha = .75f), fontSize = 15.sp, fontWeight = FontWeight.Bold, letterSpacing = 5.sp)
                 Text(
-                    songNumber.padEnd(5, '0').ifEmpty { "00000" },
+                    songNumber.padStart(5, '0').ifEmpty { "00000" },
                     color = Color.White,
                     fontSize = 76.sp,
                     fontWeight = FontWeight.ExtraBold,
@@ -195,7 +195,7 @@ private fun BidyokeApp() {
                     when (overlay) {
                         Destination.HOME -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("ENTER SONG NUMBER", color = Violet, fontWeight = FontWeight.Bold)
-                            Text(songNumber.padEnd(5, '0').ifEmpty { "00000" }, color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Bold, letterSpacing = 8.sp)
+                            Text(songNumber.padStart(5, '0').ifEmpty { "00000" }, color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Bold, letterSpacing = 8.sp)
                             listOf("1","2","3","4","5","6","7","8","9","⌫","0","CLEAR").chunked(3).forEach { keys ->
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     keys.forEach { key ->
