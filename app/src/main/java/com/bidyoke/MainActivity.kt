@@ -32,7 +32,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -50,9 +49,20 @@ private const val PREFS_NAME = "bidyoke_preferences"
 private const val PREF_SONG_FOLDER = "song_folder_uri"
 
 class MainActivity : ComponentActivity() {
+    private var remoteKeyHandler: ((android.view.KeyEvent) -> Boolean)? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { BidyokeTheme { BidyokeApp() } }
+        setContent {
+            BidyokeTheme {
+                BidyokeApp(onRemoteKeyHandler = { remoteKeyHandler = it })
+            }
+        }
+    }
+
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (remoteKeyHandler?.invoke(event) == true) return true
+        return super.dispatchKeyEvent(event)
     }
 }
 
@@ -82,7 +92,7 @@ private val sampleSongs = listOf(
 )
 
 @Composable
-private fun BidyokeApp() {
+private fun BidyokeApp(onRemoteKeyHandler: ((android.view.KeyEvent) -> Boolean) -> Unit) {
     val context = LocalContext.current
     var overlay by remember { mutableStateOf<Destination?>(null) }
     var songNumber by remember { mutableStateOf("") }
@@ -126,11 +136,9 @@ private fun BidyokeApp() {
             }
         } else false
     }
+    SideEffect { onRemoteKeyHandler(keyHandler) }
 
-    Box(
-        Modifier.fillMaxSize().background(Color.Black)
-            .onPreviewKeyEvent { keyHandler(it) }
-    ) {
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
         // Traditional karaoke standby screen: video area is the whole experience.
         Box(
             Modifier.fillMaxSize().clickable { if (overlay == null) overlay = Destination.LIBRARY },
