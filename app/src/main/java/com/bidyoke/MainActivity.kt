@@ -115,7 +115,7 @@ private fun BidyokeApp(onRemoteKeyHandler: ((android.view.KeyEvent) -> Boolean) 
     var currentSong by remember { mutableStateOf<Song?>(null) }
     var currentLyric by remember { mutableStateOf("") }
     var isPlaying by remember { mutableStateOf(false) }
-    val midiPlayer = remember { MidiKaraokePlayer(context) { playing, lyric -> isPlaying = playing; currentLyric = lyric; if (!playing) currentSong = null } }
+    val midiPlayer = remember { MidiKaraokePlayer { playing, lyric -> isPlaying = playing; currentLyric = lyric; if (!playing) currentSong = null } }
     DisposableEffect(midiPlayer) { onDispose { midiPlayer.release() } }
     fun startSong(song: Song) {
         val file = song.fileName?.let { File(context.filesDir, "demo_songs/$it") }
